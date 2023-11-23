@@ -1,0 +1,62 @@
+# Maven
+# Build your Java project and run tests with Apache Maven.
+# Add steps that analyze code, save build artifacts, deploy, and more:
+# https://docs.microsoft.com/azure/devops/pipelines/languages/java
+
+parameters:
+- name: ApacheServerLocation
+  type: string
+  default: 'C:\ApacheHTTPServer\htdocs'
+
+trigger:
+- master
+
+pool:
+  name: PENTALOG_DEV_POOL
+
+variables:
+  system.debug: true
+
+steps:
+
+- checkout: self
+  persistCredentials: true
+  fetchDepth: 0
+  clean: true
+
+- task: Maven@3
+  inputs:
+    mavenPomFile: 'pom.xml'
+    goals: 'clean install'
+    publishJUnitResults: false
+    javaHomeOption: 'JDKVersion'
+    jdkVersionOption: '1.11'
+    mavenVersionOption: '3.9.3'
+    mavenOptions: '-Xmx3072m'
+    mavenAuthenticateFeed: false
+    effectivePomSkip: false
+    sonarQubeRunAnalysis: false
+
+- task: PowerShell@2
+  inputs:
+    targetType: 'inline'
+    script: |
+      git config user.name "Build Service"
+      git config user.email "buildservice@eudonet.com"
+      git status
+      git add target/*
+      git status
+      git commit -m "Build $(Build.BuildId) [skip ci]"
+      git push origin HEAD:refs/heads/master
+  displayName: Commit reports to git
+
+- task: PowerShell@2
+  inputs:
+    targetType: 'inline'
+    script: |
+      Write-Output "Deleting old reports"
+      Remove-Item -Path "${{ parameters.ApacheServerLocation }}\*" -recurse -force
+      Write-Output "Deploying new reports" 
+      Copy-Item -Path "target\cucumber-html-reports\*" -Destination "${{ parameters.ApacheServerLocation }}" -PassThru -Recurse
+  displayName: 'Deploy reports to Apache HTTP Server'
+    
